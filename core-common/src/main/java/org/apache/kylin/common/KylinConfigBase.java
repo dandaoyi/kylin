@@ -392,6 +392,14 @@ abstract public class KylinConfigBase implements Serializable {
         return Boolean.parseBoolean(getOptional("kylin.job.notification-enabled", "false"));
     }
 
+    public boolean isStarttlsEnabled() {
+        return Boolean.parseBoolean(getOptional("kylin.job.notification-mail-enable-starttls", "false"));
+    }
+
+    public String getSmtpPort() {
+        return getOptional("kylin.job.notification-mail-port", "25");
+    }
+
     public String getMailHost() {
         return getOptional("kylin.job.notification-mail-host", "");
     }
@@ -438,6 +446,14 @@ abstract public class KylinConfigBase implements Serializable {
 
     public Integer getErrorRecordThreshold() {
         return Integer.parseInt(getOptional("kylin.job.error-record-threshold", "0"));
+    }
+
+    public boolean isAdvancedFlatTableUsed() {
+        return Boolean.parseBoolean(getOptional("kylin.job.use-advanced-flat-table", "false"));
+    }
+
+    public String getAdvancedFlatTableClass() {
+        return getOptional("kylin.job.advanced-flat-table.class");
     }
 
     // ============================================================================
@@ -800,6 +816,10 @@ abstract public class KylinConfigBase implements Serializable {
     //check KYLIN-1684, in most cases keep the default value
     public boolean isSkippingEmptySegments() {
         return Boolean.valueOf(getOptional("kylin.query.skip-empty-segments", "true"));
+    }
+
+    public boolean isStreamAggregateEnabled() {
+        return Boolean.parseBoolean(getOptional("kylin.query.stream-aggregate-enabled", "true"));
     }
 
     @Deprecated //Limit is good even it's large. This config is meaning less since we already have scan threshold 

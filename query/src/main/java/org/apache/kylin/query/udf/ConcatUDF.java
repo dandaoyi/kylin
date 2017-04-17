@@ -16,22 +16,13 @@
  * limitations under the License.
  */
 
-package org.apache.kylin.cube.gridtable;
+package org.apache.kylin.query.udf;
 
-import org.apache.kylin.cube.cuboid.Cuboid;
-import org.apache.kylin.dimension.IDimensionEncodingMap;
-import org.apache.kylin.gridtable.GTInfo;
+import org.apache.calcite.linq4j.function.Parameter;
 
-public class CubeGridTable {
-    public static GTInfo newGTInfo(Cuboid cuboid, IDimensionEncodingMap dimEncMap) {
-        CuboidToGridTableMapping mapping = new CuboidToGridTableMapping(cuboid);
+public class ConcatUDF {
 
-        GTInfo.Builder builder = GTInfo.builder();
-        builder.setTableName("Cuboid " + cuboid.getId());
-        builder.setCodeSystem(new CubeCodeSystem(mapping.getDimensionEncodings(dimEncMap), mapping.getDependentMetricsMap()));
-        builder.setColumns(mapping.getDataTypes());
-        builder.setPrimaryKey(mapping.getPrimaryKey());
-        builder.enableColumnBlock(mapping.getColumnBlocks());
-        return builder.build();
+    public String eval(@Parameter(name = "str1") String col1, @Parameter(name = "str2") String col2) {
+        return col1 + col2;
     }
 }

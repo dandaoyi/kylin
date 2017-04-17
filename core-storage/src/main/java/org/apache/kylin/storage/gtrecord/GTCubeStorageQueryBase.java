@@ -72,6 +72,28 @@ public abstract class GTCubeStorageQueryBase implements IStorageQuery {
 
     @Override
     public ITupleIterator search(StorageContext context, SQLDigest sqlDigest, TupleInfo returnTupleInfo) {
+        GTCubeStorageQueryRequest request = getStorageQueryRequest(context, sqlDigest, returnTupleInfo);
+
+        List<CubeSegmentScanner> scanners = Lists.newArrayList();
+        for (CubeSegment cubeSeg : cubeInstance.getSegments(SegmentStatusEnum.READY)) {
+            CubeSegmentScanner scanner;
+
+            if (cubeDesc.getConfig().isSkippingEmptySegments() && cubeSeg.getInputRecords() == 0) {
+                logger.info("Skip cube segment {} because its input record is 0", cubeSeg);
+                continue;
+            }
+
+            scanner = new CubeSegmentScanner(cubeSeg, request.getCuboid(), request.getDimensions(), request.getGroups(), request.getMetrics(), request.getFilter(), request.getContext());
+            scanners.add(scanner);
+        }
+
+        if (scanners.isEmpty())
+            return ITupleIterator.EMPTY_TUPLE_ITERATOR;
+
+        return new SequentialCubeTupleIterator(scanners, request.getCuboid(), request.getDimensions(), request.getMetrics(), returnTupleInfo, request.getContext());
+    }
+
+    protected GTCubeStorageQueryRequest getStorageQueryRequest(StorageContext context, SQLDigest sqlDigest, TupleInfo returnTupleInfo) {
         context.setStorageQuery(this);
 
         //deal with participant columns in subquery join
@@ -106,7 +128,6 @@ public abstract class GTCubeStorageQueryBase implements IStorageQuery {
         dimensionsD.addAll(groupsD);
         dimensionsD.addAll(otherDimsD);
         Cuboid cuboid = Cuboid.identifyCuboid(cubeDesc, dimensionsD, metrics);
-        logger.info("Cuboid identified: cube={}, cuboidId={}, groupsD={}, otherDimsD={}", cubeInstance.getName(), cuboid.getId(), groupsD, otherDimsD);
         context.setCuboid(cuboid);
 
         // set whether to aggr at storage
@@ -115,37 +136,27 @@ public abstract class GTCubeStorageQueryBase implements IStorageQuery {
 
         // replace derived columns in filter with host columns; columns on loosened condition must be added to group by
         Set<TblColRef> loosenedColumnD = Sets.newHashSet();
+        Set<TblColRef> filterColumnD = Sets.newHashSet();
         TupleFilter filterD = translateDerived(filter, loosenedColumnD);
         groupsD.addAll(loosenedColumnD);
+        TupleFilter.collectColumns(filter, filterColumnD);
 
         // set limit push down
         enableStorageLimitIfPossible(cuboid, groups, derivedPostAggregation, groupsD, filter, loosenedColumnD, sqlDigest.aggregations, context);
+        // set whether to aggregate results from multiple partitions
+        enableStreamAggregateIfBeneficial(cuboid, groupsD, context);
         // set query deadline
         context.setDeadline(cubeInstance);
 
-        List<CubeSegmentScanner> scanners = Lists.newArrayList();
-        for (CubeSegment cubeSeg : cubeInstance.getSegments(SegmentStatusEnum.READY)) {
-            CubeSegmentScanner scanner;
+        logger.info("Cuboid identified: cube={}, cuboidId={}, groupsD={}, filterD={}, limitPushdown={}, storageAggr={}", cubeInstance.getName(), cuboid.getId(), groupsD, filterColumnD, context.getFinalPushDownLimit(), context.isNeedStorageAggregation());
 
-            if (cubeDesc.getConfig().isSkippingEmptySegments() && cubeSeg.getInputRecords() == 0) {
-                logger.info("Skip cube segment {} because its input record is 0", cubeSeg);
-                continue;
-            }
-
-            scanner = new CubeSegmentScanner(cubeSeg, cuboid, dimensionsD, groupsD, metrics, filterD, context);
-            scanners.add(scanner);
-        }
-
-        if (scanners.isEmpty())
-            return ITupleIterator.EMPTY_TUPLE_ITERATOR;
-
-        return new SequentialCubeTupleIterator(scanners, cuboid, dimensionsD, metrics, returnTupleInfo, context);
+        return new GTCubeStorageQueryRequest(cuboid, dimensionsD, groupsD, filterColumnD, metrics, filterD, context);
     }
 
     protected abstract String getGTStorage();
-    
-    protected ITupleConverter newCubeTupleConverter(CubeSegment cubeSeg, Cuboid cuboid, Set<TblColRef> selectedDimensions, Set<FunctionDesc> selectedMetrics, TupleInfo tupleInfo) {
-        return new CubeTupleConverter(cubeSeg, cuboid, selectedDimensions, selectedMetrics, tupleInfo);
+
+    protected ITupleConverter newCubeTupleConverter(CubeSegment cubeSeg, Cuboid cuboid, Set<TblColRef> selectedDimensions, Set<FunctionDesc> selectedMetrics, int[] gtColIdx, TupleInfo tupleInfo) {
+        return new CubeTupleConverter(cubeSeg, cuboid, selectedDimensions, selectedMetrics, gtColIdx, tupleInfo);
     }
 
     protected void buildDimensionsAndMetrics(SQLDigest sqlDigest, Collection<TblColRef> dimensions, Collection<FunctionDesc> metrics) {
@@ -235,19 +246,14 @@ public abstract class GTCubeStorageQueryBase implements IStorageQuery {
     }
 
     public boolean isNeedStorageAggregation(Cuboid cuboid, Collection<TblColRef> groupD, Collection<TblColRef> singleValueD) {
-
-        logger.info("GroupD :" + groupD);
-        logger.info("SingleValueD :" + singleValueD);
-        logger.info("Cuboid columns :" + cuboid.getColumns());
-
         HashSet<TblColRef> temp = Sets.newHashSet();
         temp.addAll(groupD);
         temp.addAll(singleValueD);
         if (cuboid.getColumns().size() == temp.size()) {
-            logger.info("Does not need storage aggregation");
+            logger.debug("Does not need storage aggregation");
             return false;
         } else {
-            logger.info("Need storage aggregation");
+            logger.debug("Need storage aggregation");
             return true;
         }
     }
@@ -326,30 +332,30 @@ public abstract class GTCubeStorageQueryBase implements IStorageQuery {
 
         if (!TupleFilter.isEvaluableRecursively(filter)) {
             possible = false;
-            logger.info("Storage limit push down is impossible because the filter isn't evaluable");
+            logger.debug("Storage limit push down is impossible because the filter isn't evaluable");
         }
 
         if (!loosenedColumnD.isEmpty()) { // KYLIN-2173
             possible = false;
-            logger.info("Storage limit push down is impossible because filter is loosened: " + loosenedColumnD);
+            logger.debug("Storage limit push down is impossible because filter is loosened: " + loosenedColumnD);
         }
 
         if (context.hasSort()) {
             possible = false;
-            logger.info("Storage limit push down is impossible because the query has order by");
+            logger.debug("Storage limit push down is impossible because the query has order by");
         }
 
         // derived aggregation is bad, unless expanded columns are already in group by
         if (!groups.containsAll(derivedPostAggregation)) {
             possible = false;
-            logger.info("Storage limit push down is impossible because derived column require post aggregation: " + derivedPostAggregation);
+            logger.debug("Storage limit push down is impossible because derived column require post aggregation: " + derivedPostAggregation);
         }
 
         //if groupsD is clustered at "head" of the rowkey, then limit push down is possible
         int size = groupsD.size();
         if (!groupsD.containsAll(cuboid.getColumns().subList(0, size))) {
             possible = false;
-            logger.info("Storage limit push down is impossible because groupD is not clustered at head, groupsD: " + groupsD //
+            logger.debug("Storage limit push down is impossible because groupD is not clustered at head, groupsD: " + groupsD //
                     + " with cuboid columns: " + cuboid.getColumns());
         }
 
@@ -357,12 +363,37 @@ public abstract class GTCubeStorageQueryBase implements IStorageQuery {
         for (FunctionDesc functionDesc : functionDescs) {
             if (functionDesc.isDimensionAsMetric()) {
                 possible = false;
-                logger.info("Storage limit push down is impossible because {} isDimensionAsMetric ", functionDesc);
+                logger.debug("Storage limit push down is impossible because {} isDimensionAsMetric ", functionDesc);
             }
         }
 
         if (possible) {
             context.setFinalPushDownLimit(cubeInstance);
+        }
+    }
+
+    private void enableStreamAggregateIfBeneficial(Cuboid cuboid, Set<TblColRef> groupsD, StorageContext context) {
+        CubeDesc cubeDesc = cuboid.getCubeDesc();
+        boolean enabled = cubeDesc.getConfig().isStreamAggregateEnabled();
+
+        Set<TblColRef> shardByInGroups = Sets.newHashSet();
+        for (TblColRef col : cubeDesc.getShardByColumns()) {
+            if (groupsD.contains(col)) {
+                shardByInGroups.add(col);
+            }
+        }
+        if (!shardByInGroups.isEmpty()) {
+            enabled = false;
+            logger.debug("Aggregate partition results is not beneficial because shard by columns in groupD: " + shardByInGroups);
+        }
+
+        if (!context.isNeedStorageAggregation()) {
+            enabled = false;
+            logger.debug("Aggregate partition results is not beneficial because no storage aggregation");
+        }
+
+        if (enabled) {
+            context.enableStreamAggregate();
         }
     }
 
