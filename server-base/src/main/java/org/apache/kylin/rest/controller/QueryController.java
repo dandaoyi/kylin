@@ -63,6 +63,11 @@ public class QueryController extends BasicController {
     @Autowired
     private QueryService queryService;
 
+    /**
+     * 查询
+     * @param sqlRequest
+     * @return
+     */
     @RequestMapping(value = "/query", method = RequestMethod.POST)
     @ResponseBody
     public SQLResponse query(@RequestBody SQLRequest sqlRequest) {

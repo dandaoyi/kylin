@@ -271,6 +271,7 @@ public class ExecutableManager {
         updateJobOutput(jobId, ExecutableState.DISCARDED, null, null);
     }
 
+    // 更新 kylin job 的状态
     public void updateJobOutput(String jobId, ExecutableState newStatus, Map<String, String> info, String output) {
         try {
             final ExecutableOutputPO jobOutput = executableDao.getJobOutput(jobId);

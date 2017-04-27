@@ -114,6 +114,12 @@ public class FactDistinctColumnsJob extends AbstractHadoopJob {
 
     }
 
+
+    /**
+     *  设置 map类
+     * @param cubeSeg
+     * @throws IOException
+     */
     private void setupMapper(CubeSegment cubeSeg) throws IOException {
         IMRTableInputFormat flatTableInputFormat = MRUtil.getBatchCubingInputSide(cubeSeg).getFlatTableInputFormat();
         flatTableInputFormat.configureJob(job);
