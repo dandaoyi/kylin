@@ -666,6 +666,10 @@ abstract public class KylinConfigBase implements Serializable {
         return getOptional("mail.host", "");
     }
 
+    public int getMailPort() {
+        return Integer.parseInt(StringUtils.trim(getOptional("mail.port", "25")));
+    }
+
     public String getMailUsername() {
         return getOptional("mail.username", "");
     }

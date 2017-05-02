@@ -164,7 +164,7 @@ public class CubingJob extends DefaultChainedExecutable {
             logger.warn(e.getLocalizedMessage(), e);
         }
 
-        String title = "[" + state.toString() + "] - [" + getDeployEnvName() + "] - [" + getProjectName() + "] - " + CubingExecutableUtil.getCubeName(this.getParams());
+        String title = "KYLIN JOB NOTIFY [" + state.toString() + "] - [" + getDeployEnvName() + "] - [" + getProjectName() + "] - " + CubingExecutableUtil.getCubeName(this.getParams());
 
         return Pair.of(title, content);
     }
@@ -191,7 +191,7 @@ public class CubingJob extends DefaultChainedExecutable {
      */
     @Override
     protected void handleMetaDataPersistException(Exception exception) {
-        String title = "[ERROR] - [" + getDeployEnvName() + "] - [" + getProjectName() + "] - " + CubingExecutableUtil.getCubeName(this.getParams());
+        String title = "KYLIN JOB NOTIFY [ERROR] - [" + getDeployEnvName() + "] - [" + getProjectName() + "] - " + CubingExecutableUtil.getCubeName(this.getParams());
         String content = ExecutableConstants.NOTIFY_EMAIL_TEMPLATE;
         final String UNKNOWN = "UNKNOWN";
         String errMsg = null;

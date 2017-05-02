@@ -38,17 +38,19 @@ public class MailService {
     private String username;
     private String password;
     private String sender;
+    private int port;
 
     public MailService(KylinConfig config) {
-        this(config.isMailEnabled(), config.getMailHost(), config.getMailUsername(), config.getMailPassword(), config.getMailSender());
+        this(config.isMailEnabled(), config.getMailHost(), config.getMailUsername(), config.getMailPassword(), config.getMailSender(), config.getMailPort());
     }
 
-    private MailService(boolean enabled, String host, String username, String password, String sender) {
+    private MailService(boolean enabled, String host, String username, String password, String sender, int port) {
         this.enabled = enabled;
         this.host = host;
         this.username = username;
         this.password = password;
         this.sender = sender;
+        this.port = port;
 
         if (enabled) {
             if (host.isEmpty()) {
@@ -85,6 +87,7 @@ public class MailService {
 
         Email email = new HtmlEmail();
         email.setHostName(host);
+        email.setSmtpPort(port);
         if (username != null && username.trim().length() > 0) {
             email.setAuthentication(username, password);
         }
