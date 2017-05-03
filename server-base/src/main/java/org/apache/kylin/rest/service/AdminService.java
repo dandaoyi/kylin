@@ -30,7 +30,7 @@ import org.apache.kylin.common.KylinConfig;
 import org.apache.kylin.common.util.OrderedProperties;
 import org.apache.kylin.rest.constant.Constant;
 import org.apache.kylin.rest.exception.InternalErrorException;
-import org.apache.kylin.tool.StorageCleanupJob;
+import org.apache.kylin.rest.job.StorageCleanupJob;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -89,7 +89,7 @@ public class AdminService extends BasicService {
      *
      * @return
      */
-    // @PreAuthorize(Constant.ACCESS_HAS_ROLE_ADMIN)
+    // @PreAuthorize(Constant.ACCESS_HAS_ROLE_ADMIN)  // this is a critical security issue, see KYLIN-1664
     public String getConfigAsString() {
         logger.debug("Get Kylin Runtime Config");
 
