@@ -29,9 +29,11 @@ import java.util.TreeSet;
 import java.util.concurrent.ConcurrentMap;
 
 import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.debug.BackdoorToggles;
 import org.apache.kylin.common.util.Pair;
 import org.apache.kylin.metadata.badquery.BadQueryHistoryManager;
 import org.apache.kylin.rest.request.SQLRequest;
+import org.apache.kylin.rest.response.SQLResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -127,6 +129,15 @@ public class BadQueryDetector extends Thread {
             } catch (Exception ex) {
                 logger.error("", ex);
             }
+        }
+    }
+
+    public void detectBadQuery(Thread thread, SQLRequest sqlRequest, SQLResponse sqlResponse, String user, long start) {
+        float runningSec = (float) (System.currentTimeMillis() - start) / 1000;
+        if (runningSec >= alertRunningSec) {
+            notify("Slow", runningSec, start, sqlRequest.getProject(), sqlRequest.getSql(), user, thread);
+            logger.warn(String.format("Slow query!query id is %s,sql is %s,cube is %s,scan total count is %s",
+                    BackdoorToggles.getQueryId(), sqlRequest.getSql(), sqlResponse.getCube(), sqlResponse.getTotalScanCount()));
         }
     }
 
