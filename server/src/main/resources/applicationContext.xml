@@ -46,6 +46,7 @@
         <property name="ignoreResourceNotFound" value="true"/>
     </bean>
 
+    <import resource="rediscache.xml" />
 
     <!-- Rest service binding -->
     <bean
