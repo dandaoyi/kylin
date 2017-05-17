@@ -64,7 +64,6 @@ import org.apache.kylin.metadata.project.RealizationEntry;
 import org.apache.kylin.metadata.realization.RealizationType;
 import org.apache.kylin.query.relnode.OLAPContext;
 import org.apache.kylin.rest.constant.Constant;
-import org.apache.kylin.rest.util.RedisService;
 import org.apache.kylin.rest.exception.InternalErrorException;
 import org.apache.kylin.rest.metrics.QueryMetricsFacade;
 import org.apache.kylin.rest.model.ColumnMeta;
@@ -75,6 +74,7 @@ import org.apache.kylin.rest.request.PrepareSqlRequest;
 import org.apache.kylin.rest.request.SQLRequest;
 import org.apache.kylin.rest.response.SQLResponse;
 import org.apache.kylin.rest.util.QueryUtil;
+import org.apache.kylin.rest.util.RedisService;
 import org.apache.kylin.rest.util.Serializer;
 import org.apache.kylin.rest.util.TableauInterceptor;
 import org.apache.kylin.storage.exception.ScanOutOfLimitException;
@@ -89,10 +89,9 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
+import com.alibaba.fastjson.JSON;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
-
-import com.alibaba.fastjson.JSON;
 
 import net.sf.ehcache.Cache;
 import net.sf.ehcache.CacheManager;
@@ -142,7 +141,7 @@ public class QueryService extends BasicService {
         hbaseUrl = cut < 0 ? metadataUrl : metadataUrl.substring(cut + 1);
         userTableName = tableNameBase + USER_TABLE_NAME;
 
-        //默认是线程后台监控,修改后是调用时实时监控,可能会有性能损耗
+        //TODO 默认是线程后台监控,修改后是调用时实时监控,可能会有性能损耗 .这个改动得慎重，若是放在一个线程，可能因为监控阻塞 而影响sql查询。
         //badQueryDetector.start();
     }
 
@@ -151,17 +150,28 @@ public class QueryService extends BasicService {
     }
 
     public SQLResponse query(SQLRequest sqlRequest) throws Exception {
-        try {
-            final String user = SecurityContextHolder.getContext().getAuthentication().getName();
-            //调用时实时监控慢请求,可能会有性能损耗
-            //badQueryDetector.queryStart(Thread.currentThread(), sqlRequest, user);
-            long start = System.currentTimeMillis();
-            SQLResponse sqlResponse =  queryWithSqlMassage(sqlRequest);
-            badQueryDetector.detectBadQuery(Thread.currentThread(), sqlRequest, sqlResponse, user, start);
-            return sqlResponse;
-        } finally {
-            //badQueryDetector.queryEnd(Thread.currentThread());
-        }
+        //        try {
+        final String user = SecurityContextHolder.getContext().getAuthentication().getName();
+        //调用时实时监控慢请求,可能会有性能损耗
+        //badQueryDetector.queryStart(Thread.currentThread(), sqlRequest, user);
+        long start = System.currentTimeMillis();
+        SQLResponse sqlResponse = queryWithSqlMassage(sqlRequest);
+
+        // 异步检查 慢查询
+        final Thread tempThread = Thread.currentThread();
+        final SQLRequest sqlRequestTemp = sqlRequest;
+        final SQLResponse sqlResponseTemp = sqlResponse;
+        final long startTemp = start;
+        new Thread() {
+            public void run() {
+                badQueryDetector.detectBadQuery(tempThread, sqlRequestTemp, sqlResponseTemp, user, startTemp);
+            }
+        }.start();
+
+        return sqlResponse;
+        //        } finally {
+        //            //badQueryDetector.queryEnd(Thread.currentThread());
+        //        }
     }
 
     public void saveQuery(final String creator, final Query query) throws IOException {
@@ -353,6 +363,7 @@ public class QueryService extends BasicService {
             long startTime = System.currentTimeMillis();
 
             SQLResponse sqlResponse = null;
+            // 配置文件中允许缓存  并且 后门让用缓存
             boolean queryCacheEnabled = kylinConfig.isQueryCacheEnabled() && !BackdoorToggles.getDisableCache();
             if (queryCacheEnabled) {
                 sqlResponse = searchQueryInRedisCache(sqlRequest);
@@ -408,8 +419,7 @@ public class QueryService extends BasicService {
     }
 
     public SQLResponse searchQueryInRedisCache(SQLRequest sqlRequest) {
-        SQLResponse response = redisService.get(sqlRequest.getSql() + sqlRequest.getProject(),
-                SQLResponse.class);
+        SQLResponse response = redisService.get(sqlRequest.getSql() + sqlRequest.getProject(), SQLResponse.class);
         if (response != null) {
             logger.info("The sqlResponse is found in redis cache,respose is " + JSON.toJSONString(response));
             response.setStorageCacheUsed(true);

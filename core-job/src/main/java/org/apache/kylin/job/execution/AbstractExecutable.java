@@ -33,6 +33,7 @@ import org.apache.kylin.job.exception.ExecuteException;
 import org.apache.kylin.job.exception.PersistentException;
 import org.apache.kylin.job.impl.threadpool.DefaultContext;
 import org.apache.kylin.job.manager.ExecutableManager;
+import org.apache.kylin.job.util.HttpUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -243,12 +244,24 @@ public abstract class AbstractExecutable implements Executable, Idempotent {
         try {
             final KylinConfig kylinConfig = KylinConfig.getInstanceFromEnv();
             List<String> users = getAllNofifyUsers(kylinConfig);
+
+            final Pair<String, String> email = formatNotifications(context, state);
+
+            // TODO  2017-5-15 加上如果是“失败”，同时将报警发送到公司的jira。调用jira的http接口。
+            if (state == ExecutableState.ERROR) {
+                try {
+                    HttpUtil.sendHttpPostToJira("http://wenti.link.lianjia.com/rest/api/2/issue/", email.getLeft(), "Build Job " + getName() + ",   Build Result is " + state.toString() + " . 负责人是" + users + " ,   详情请查看邮件或者登陆kylin查看，请尽快登陆kylin web系统处理!");
+                } catch (Exception e) {
+                    logger.error("create  jira  wenti.link.lianjia.com error", e);
+                }
+            }
+
             if (users.isEmpty()) {
                 logger.warn("no need to send email, user list is empty");
                 return;
             }
-            final Pair<String, String> email = formatNotifications(context, state);
             doSendMail(kylinConfig, users, email);
+
         } catch (Exception e) {
             logger.error("error send email", e);
         }

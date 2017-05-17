@@ -131,7 +131,6 @@ public class DebugTomcat {
         // tomcat start
         tomcat.start();
         tomcat.getServer().await();
-
     }
 
 }
