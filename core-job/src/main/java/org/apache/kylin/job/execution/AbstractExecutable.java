@@ -247,12 +247,13 @@ public abstract class AbstractExecutable implements Executable, Idempotent {
 
             final Pair<String, String> email = formatNotifications(context, state);
 
-            // TODO  2017-5-15 加上如果是“失败”，同时将报警发送到公司的jira。调用jira的http接口。
-            if (state == ExecutableState.ERROR) {
+            // TODO  2017-5-15 如果是“失败”，同时将报警发送到公司的jira。调用jira的http接口。
+            //   2017-5-26 王康 提出需求 是新房new_house  project的，暂时不发jira。 jira太多，他很烦。
+            if (state == ExecutableState.ERROR && kylinConfig.isJiraEnabled() && (!"new_house".equals(getParam("projectName")))) {
                 try {
-                    HttpUtil.sendHttpPostToJira("http://wenti.link.lianjia.com/rest/api/2/issue/", email.getLeft(), "Build Job " + getName() + ",   Build Result is " + state.toString() + " . 负责人是" + users + " ,   详情请查看邮件或者登陆kylin查看，请尽快登陆kylin web系统处理!");
+                    HttpUtil.sendHttpPostToJira(kylinConfig.getJiraUrl(), email.getLeft(), "Build Job " + getName() + ",   Build Result is " + state.toString() + " . 负责人是" + users + " ,   详情请查看邮件或者登陆kylin查看，请尽快登陆kylin web系统处理!");
                 } catch (Exception e) {
-                    logger.error("create  jira  wenti.link.lianjia.com error", e);
+                    logger.error("create  jira error" + kylinConfig.getJiraUrl(), e);
                 }
             }
 

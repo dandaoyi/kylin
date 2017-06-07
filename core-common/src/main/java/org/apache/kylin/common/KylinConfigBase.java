@@ -682,6 +682,14 @@ abstract public class KylinConfigBase implements Serializable {
         return getOptional("mail.sender", "");
     }
 
+    public boolean isJiraEnabled() {
+        return Boolean.parseBoolean(getOptional("jira.enabled", "false"));
+    }
+
+    public String getJiraUrl() {
+        return StringUtils.trim(getOptional("jira.url", ""));
+    }
+
     public boolean isWebCrossDomainEnabled() {
         return Boolean.parseBoolean(getOptional("crossdomain.enable", "true"));
     }

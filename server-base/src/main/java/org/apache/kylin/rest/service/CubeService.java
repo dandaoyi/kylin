@@ -260,6 +260,12 @@ public class CubeService extends BasicService {
             throw new JobException("The cube " + cube.getName() + " has running job, please discard it and try again.");
         }
 
+        // 2017-6-6  只有 cube状态为 disabled 并且 segments.size()的大小为0 ，才能删除 cube。 防止误删除 cube 。   cube状态 DESCBROKEN 是指cube desc 描述json信息已损坏，不完整。
+        //  用户在页面上删除 cube的时候，先 purge清除数据后，那么 segments.size()为0 ，然后就能删除了。
+        if (!((cube.getStatus() == RealizationStatusEnum.DISABLED) && (cube.getSegments().size() == 0))) {
+            throw new InternalErrorException("Only disabled cube can be delete, and cube shouldn't has any segments! you can purge first . cube status is  " + cube.getStatus() + ",cube segments size is " + cube.getSegments().size());
+        }
+
         try {
             this.releaseAllJobs(cube);
         } catch (Exception e) {
@@ -490,19 +496,26 @@ public class CubeService extends BasicService {
     @PreAuthorize(Constant.ACCESS_HAS_ROLE_ADMIN + " or hasPermission(#cube, 'ADMINISTRATION') or hasPermission(#cube, 'OPERATION')  or hasPermission(#cube, 'MANAGEMENT')")
     public CubeInstance deleteSegment(CubeInstance cube, String segmentName) throws IOException {
 
-        if (!segmentName.equals(cube.getSegments().get(0).getName()) && !segmentName.equals(cube.getSegments().get(cube.getSegments().size() - 1).getName())) {
-            throw new IllegalArgumentException("Cannot delete segment '" + segmentName + "' as it is neither the first nor the last segment.");
-        }
+        // 2017-6-6  不能删除 中间的segment，推测 kylin的考虑出发点 ：是 因为自动merge功能，如果把中间segment的删了，后续也merge了，可能会造成缺失一些数据。 但把这两行注释掉了，也不会有大的问题，因为 头尾是 相对的，把头删了，那么原先的第二个就会变成 头，也能删。
+        //        if (!segmentName.equals(cube.getSegments().get(0).getName()) && !segmentName.equals(cube.getSegments().get(cube.getSegments().size() - 1).getName())) {
+        //            throw new IllegalArgumentException("Cannot delete segment '" + segmentName + "' as it is neither the first nor the last segment.");
+        //        }
         CubeSegment toDelete = null;
+
+        // segmentname 形如 20170525000000_20170526000000
         for (CubeSegment seg : cube.getSegments()) {
             if (seg.getName().equals(segmentName)) {
                 toDelete = seg;
             }
         }
 
-        if (toDelete.getStatus() != SegmentStatusEnum.READY) {
-            throw new IllegalArgumentException("Cannot delete segment '" + segmentName + "' as its status is not READY. Discard the on-going job for it.");
+        if (toDelete == null) {
+            throw new IllegalArgumentException("Cannot find segment '" + segmentName + "'");
         }
+
+        //        if (toDelete.getStatus() != SegmentStatusEnum.READY) {
+        //            throw new IllegalArgumentException("Cannot delete segment '" + segmentName + "' as its status is not READY. Discard the on-going job for it.");
+        //        }
 
         CubeUpdate update = new CubeUpdate(cube);
         update.setToRemoveSegs(new CubeSegment[] { toDelete });
